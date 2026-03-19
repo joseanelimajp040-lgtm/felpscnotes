@@ -37,7 +37,6 @@
   const app = initializeApp(firebaseConfig);
   const db  = getFirestore(app);
 
-  // ── sync status indicator ────────────────────────────────────────
   function setSyncStatus(status) {
     const map = {
       syncing: { cls:'bg-amber-400 animate-pulse', label:'Sincronizando…' },
@@ -53,7 +52,6 @@
     }
   }
 
-  // ── real-time listeners ──────────────────────────────────────────
   onSnapshot(query(collection(db,'notes'), orderBy('updatedAt','desc')),
     snap => {
       const notes = [];
@@ -74,7 +72,6 @@
     const folders = [];
     snap.forEach(d => folders.push({ ...d.data(), id: d.id }));
     if (!folders.length) {
-      // seed default folder
       setDoc(doc(db,'folders','default'), { name:'Notas', icon:'note_stack' });
       return;
     }
@@ -89,7 +86,6 @@
     if (window._appReady) window._onDataUpdate?.('labels');
   });
 
-  // ── global write helpers ─────────────────────────────────────────
   window.FB_saveNote = async note => {
     setSyncStatus('syncing');
     const { id, isNew, ...data } = note;
@@ -174,14 +170,166 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .fb-badge{display:inline-flex;align-items:center;gap:4px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;border-radius:999px;font-size:.6rem;font-weight:700;padding:2px 7px;letter-spacing:.03em}
 .dark .fb-badge{background:#431407;color:#fb923c;border-color:#7c2d12}
+
+/* ─── DESKTOP RESPONSIVE ──────────────────────────────────────────────────── */
+.mobile-only{}
+.desktop-only{display:none!important}
+
+@media (min-width:768px){
+  /* Utilities */
+  .mobile-only{display:none!important}
+  .desktop-only{display:flex!important}
+
+  /* Reset body */
+  body{overflow:hidden;min-height:100vh}
+
+  /* Root container becomes full-width 3-column layout */
+  #app-container{
+    display:flex!important;
+    flex-direction:row;
+    height:100vh;
+    max-width:none!important;
+    width:100vw;
+  }
+
+  /* All three panels visible simultaneously */
+  .screen{
+    display:flex!important;
+    position:static!important;
+    height:100vh;
+    overflow:hidden;
+    animation:none!important;
+  }
+
+  /* ── Column 1: Sidebar (Folders) ── */
+  #screen-folders{
+    width:248px;
+    min-width:248px;
+    flex-shrink:0;
+    border-right:1px solid #e2e8f0;
+    background:#f4f5f7;
+  }
+  .dark #screen-folders{
+    border-right-color:#1e293b;
+    background:#0d1117;
+  }
+  #screen-folders header{
+    padding-top:16px;
+    padding-bottom:12px;
+  }
+  /* Sidebar scrollable area */
+  #screen-folders main{
+    padding-bottom:16px;
+  }
+
+  /* ── Column 2: Notes List ── */
+  #screen-notes{
+    width:300px;
+    min-width:260px;
+    flex-shrink:0;
+    border-right:1px solid #e2e8f0;
+    background:#f4f5f7;
+  }
+  .dark #screen-notes{
+    border-right-color:#1e293b;
+    background:#0d1117;
+  }
+  #screen-notes header{
+    border-bottom:1px solid #e2e8f0;
+  }
+  .dark #screen-notes header{
+    border-bottom-color:#1e293b;
+  }
+
+  /* ── Column 3: Editor ── */
+  #screen-editor{
+    flex:1;
+    min-width:0;
+    background:white;
+  }
+  .dark #screen-editor{
+    background:#161b27;
+  }
+  /* Editor takes full column height */
+  #screen-editor main{
+    height:calc(100vh - 56px - 56px);
+  }
+
+  /* ── Settings: replaces editor column ── */
+  #screen-settings{
+    flex:1;
+    min-width:0;
+  }
+  /* Settings hidden unless active, editor shown by default */
+  #screen-settings:not(.desk-active){display:none!important}
+  #screen-editor.desk-hidden{display:none!important}
+
+  /* Hide FAB and bottom navs */
+  .fab{display:none!important}
+  nav.bottom-nav{display:none!important}
+
+  /* Scrollbars on desktop panels */
+  #screen-folders main::-webkit-scrollbar,
+  #screen-notes main::-webkit-scrollbar,
+  #screen-editor .flex-1::-webkit-scrollbar{width:4px}
+  #screen-folders main::-webkit-scrollbar-track,
+  #screen-notes main::-webkit-scrollbar-track,
+  #screen-editor .flex-1::-webkit-scrollbar-track{background:transparent}
+  #screen-folders main::-webkit-scrollbar-thumb,
+  #screen-notes main::-webkit-scrollbar-thumb,
+  #screen-editor .flex-1::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+  .dark #screen-folders main::-webkit-scrollbar-thumb,
+  .dark #screen-notes main::-webkit-scrollbar-thumb,
+  .dark #screen-editor .flex-1::-webkit-scrollbar-thumb{background:#334155}
+
+  /* Active note highlight in list */
+  .note-row.desk-active{background:#eff6ff!important}
+  .dark .note-row.desk-active{background:#1e3a5f!important}
+
+  /* Desktop new-note button in notes header */
+  .desk-new-note{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    width:32px;height:32px;
+    border-radius:8px;
+    background:#135bec;
+    color:white;
+    cursor:pointer;
+    transition:background .15s;
+    flex-shrink:0;
+  }
+  .desk-new-note:hover{background:#0d47c8}
+
+  /* Toast repositioned for desktop */
+  .toast{bottom:32px}
+
+  /* Modal centered on desktop */
+  .modal-overlay{align-items:center}
+  .modal-sheet{border-radius:16px;max-width:420px;width:420px}
+
+  /* Editor empty state */
+  #editor-empty-state{display:flex}
+
+  /* Notes list header layout on desktop */
+  #notes-title{font-size:1.1rem;margin-bottom:8px;padding-left:4px}
+
+  /* Active sidebar nav item */
+  .desk-nav-active span{color:#135bec!important}
+
+  /* Settings back: go back to editor */
+  #desk-settings-back{display:flex!important}
+}
 </style>
 </head>
 
 <body class="bg-bg-light dark:bg-bg-dark text-slate-900 dark:text-slate-100 antialiased">
-<div class="relative mx-auto max-w-md" style="min-height:100dvh">
+
+<!-- Root container -->
+<div id="app-container" class="relative mx-auto max-w-md" style="min-height:100dvh">
 <div id="toast" class="toast"></div>
 
-<!-- ═══════════════════════════ SCREEN 1 — FOLDERS ═══════════════════════════ -->
+<!-- ═══════════════════ SCREEN 1 — FOLDERS (sidebar on desktop) ═══════════════════ -->
 <div id="screen-folders" class="screen active bg-bg-light dark:bg-bg-dark">
   <header class="sticky top-0 z-10 bg-bg-light/90 dark:bg-bg-dark/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-5 py-4">
     <div class="flex items-center justify-between mb-1">
@@ -241,43 +389,76 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
     </button>
   </main>
 
-  <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 py-3 z-20">
+  <!-- Mobile bottom nav -->
+  <nav class="bottom-nav mobile-only fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 py-3 z-20">
     <button class="flex flex-col items-center text-primary gap-0.5">
       <span class="material-symbols-outlined fill-icon text-[26px]">folder</span>
       <span class="text-[10px] font-semibold uppercase tracking-wide">Pastas</span>
     </button>
-    <!-- Install PWA button (hidden until browser fires beforeinstallprompt) -->
     <button id="install-btn" onclick="installApp()" style="display:none" class="flex flex-col items-center text-emerald-500 gap-0.5">
       <span class="material-symbols-outlined text-[26px]">install_mobile</span>
       <span class="text-[10px] font-semibold uppercase tracking-wide">Instalar</span>
     </button>
-    <button onclick="navigate('screen-settings')" class="flex flex-col items-center text-slate-400 dark:text-slate-500 gap-0.5">
+    <button onclick="navigateSettings()" class="flex flex-col items-center text-slate-400 dark:text-slate-500 gap-0.5">
       <span class="material-symbols-outlined text-[26px]">settings</span>
       <span class="text-[10px] font-medium uppercase tracking-wide">Config.</span>
     </button>
   </nav>
-  <div class="fab" onclick="newNote(null)"><span class="material-symbols-outlined text-[28px]">edit_note</span></div>
+
+  <!-- Desktop bottom actions (sidebar footer) -->
+  <div class="desktop-only hidden items-center justify-between px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-bg-light dark:bg-bg-dark shrink-0">
+    <button onclick="navigateSettings()" id="desk-settings-nav-btn"
+      class="flex items-center gap-2 px-3 py-2 rounded-xl text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 text-sm font-medium transition-colors">
+      <span class="material-symbols-outlined text-[20px]">settings</span>
+      <span>Config.</span>
+    </button>
+    <div class="flex items-center gap-1.5">
+      <div class="sync-dot w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0"></div>
+    </div>
+  </div>
+
+  <div class="fab mobile-only" onclick="newNote(null)"><span class="material-symbols-outlined text-[28px]">edit_note</span></div>
 </div>
 
-<!-- ═══════════════════════════ SCREEN 2 — NOTES LIST ═══════════════════════════ -->
+<!-- ═══════════════════ SCREEN 2 — NOTES LIST ═══════════════════ -->
 <div id="screen-notes" class="screen bg-bg-light dark:bg-bg-dark">
   <header class="sticky top-0 z-10 bg-bg-light/90 dark:bg-bg-dark/90 backdrop-blur-md px-4 pt-4 pb-2">
-    <div class="flex items-center justify-between mb-2">
+    <!-- Mobile back button -->
+    <div class="mobile-only flex items-center justify-between mb-2">
       <button onclick="navigate('screen-folders','back')" class="flex items-center text-primary font-medium gap-0.5">
         <span class="material-symbols-outlined text-[22px]">chevron_left</span>
         <span class="text-sm">Pastas</span>
       </button>
       <div class="relative">
-        <button id="sort-btn" onclick="toggleSort()" class="p-1.5 text-primary rounded-full hover:bg-primary/10">
+        <button id="sort-btn-mob" onclick="toggleSort('mob')" class="p-1.5 text-primary rounded-full hover:bg-primary/10">
           <span class="material-symbols-outlined text-[22px]">sort</span>
         </button>
-        <div id="sort-menu" class="ctx-menu hidden">
+        <div id="sort-menu-mob" class="ctx-menu hidden">
           <div class="ctx-item" onclick="setSortMode('date')"><span class="material-symbols-outlined text-[18px]">schedule</span>Mais recente</div>
           <div class="ctx-item" onclick="setSortMode('title')"><span class="material-symbols-outlined text-[18px]">sort_by_alpha</span>Título A-Z</div>
           <div class="ctx-item" onclick="setSortMode('oldest')"><span class="material-symbols-outlined text-[18px]">history</span>Mais antigo</div>
         </div>
       </div>
     </div>
+
+    <!-- Desktop notes header -->
+    <div class="desktop-only hidden items-center justify-between mb-1 px-1">
+      <div class="relative">
+        <button id="sort-btn-desk" onclick="toggleSort('desk')" class="p-1.5 text-slate-400 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800">
+          <span class="material-symbols-outlined text-[20px]">sort</span>
+        </button>
+        <div id="sort-menu-desk" class="ctx-menu hidden">
+          <div class="ctx-item" onclick="setSortMode('date')"><span class="material-symbols-outlined text-[18px]">schedule</span>Mais recente</div>
+          <div class="ctx-item" onclick="setSortMode('title')"><span class="material-symbols-outlined text-[18px]">sort_by_alpha</span>Título A-Z</div>
+          <div class="ctx-item" onclick="setSortMode('oldest')"><span class="material-symbols-outlined text-[18px]">history</span>Mais antigo</div>
+        </div>
+      </div>
+      <!-- Desktop new note button -->
+      <div class="desk-new-note" onclick="newNote(currentFolder)" title="Nova nota (N)">
+        <span class="material-symbols-outlined text-[20px]">add</span>
+      </div>
+    </div>
+
     <h1 id="notes-title" class="text-3xl font-bold tracking-tight mb-3 px-1">Notas</h1>
     <label class="relative flex items-center px-1 mb-1">
       <span class="material-symbols-outlined absolute left-4 text-slate-400 text-[20px]">search</span>
@@ -288,13 +469,14 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
     <div id="notes-list" class="bg-white dark:bg-surface-dark rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800"></div>
     <p id="notes-count" class="text-center text-slate-400 text-sm mt-5 mb-24"></p>
   </main>
-  <div class="fab" onclick="newNote(currentFolder)"><span class="material-symbols-outlined text-[28px]">add</span></div>
+  <div class="fab mobile-only" onclick="newNote(currentFolder)"><span class="material-symbols-outlined text-[28px]">add</span></div>
 </div>
 
-<!-- ═══════════════════════════ SCREEN 3 — EDITOR ═══════════════════════════ -->
+<!-- ═══════════════════ SCREEN 3 — EDITOR ═══════════════════ -->
 <div id="screen-editor" class="screen bg-white dark:bg-surface-dark">
   <header class="flex items-center px-3 py-2.5 border-b border-slate-200 dark:border-slate-800 justify-between shrink-0">
-    <button onclick="saveAndBack()" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+    <!-- Back button: mobile goes to notes list, desktop closes editor -->
+    <button onclick="handleEditorBack()" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
       <span class="material-symbols-outlined text-slate-700 dark:text-slate-300">arrow_back</span>
     </button>
     <div class="flex items-center gap-1">
@@ -308,7 +490,18 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
       <button onclick="saveAndBack()" class="ml-1 px-4 py-1.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary-dark transition-colors">Salvar</button>
     </div>
   </header>
-  <main class="flex-1 flex flex-col overflow-hidden">
+
+  <!-- Empty state (desktop only, shown when no note is open) -->
+  <div id="editor-empty-state" class="hidden flex-col items-center justify-center flex-1 text-center px-8">
+    <div class="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+      <span class="material-symbols-outlined text-primary text-[36px]">edit_note</span>
+    </div>
+    <p class="font-semibold text-slate-500 dark:text-slate-400 text-lg mb-1">Selecione uma nota</p>
+    <p class="text-sm text-slate-400">Clique em uma nota para abrir, ou crie uma nova com o botão <strong>+</strong></p>
+  </div>
+
+  <!-- Editor content (hidden when showing empty state) -->
+  <main id="editor-main-content" class="flex-1 flex flex-col overflow-hidden">
     <div class="px-5 pt-5 pb-2 shrink-0">
       <input id="note-title" type="text" placeholder="Título" class="w-full text-2xl font-bold border-none bg-transparent p-0 mb-2 placeholder:text-slate-300 dark:placeholder:text-slate-700"/>
       <div class="flex items-center gap-3 flex-wrap">
@@ -340,17 +533,16 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
   <div class="h-4 bg-white dark:bg-surface-dark shrink-0"></div>
 </div>
 
-<!-- ═══════════════════════════ SCREEN 4 — SETTINGS ═══════════════════════════ -->
+<!-- ═══════════════════ SCREEN 4 — SETTINGS ═══════════════════ -->
 <div id="screen-settings" class="screen bg-bg-light dark:bg-bg-dark">
   <header class="sticky top-0 z-10 bg-bg-light/90 dark:bg-bg-dark/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-5 py-4 flex items-center gap-3">
-    <button onclick="navigate('screen-folders','back')" class="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+    <button onclick="navigateBack()" class="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
       <span class="material-symbols-outlined">arrow_back</span>
     </button>
     <h1 class="text-xl font-bold flex-1">Configurações</h1>
-    <span class="text-[10px] font-mono text-slate-400">v2.0</span>
+    <span class="text-[10px] font-mono text-slate-400">v2.1</span>
   </header>
   <main class="flex-1 overflow-y-auto pb-24">
-    <!-- Firebase info -->
     <section class="mt-5">
       <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Projeto Firebase</p>
       <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
@@ -377,7 +569,6 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
       </div>
     </section>
 
-    <!-- Sync -->
     <section class="mt-5">
       <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Sincronização em tempo real</p>
       <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
@@ -395,7 +586,6 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
       </div>
     </section>
 
-    <!-- Storage -->
     <section class="mt-5">
       <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Cache local</p>
       <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
@@ -408,7 +598,6 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
       </div>
     </section>
 
-    <!-- Prefs -->
     <section class="mt-5">
       <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Preferências</p>
       <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
@@ -434,7 +623,8 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
     </div>
   </main>
 
-  <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 py-3 z-20">
+  <!-- Mobile bottom nav for settings -->
+  <nav class="bottom-nav mobile-only fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 py-3 z-20">
     <button onclick="navigate('screen-folders','back')" class="flex flex-col items-center text-slate-400 dark:text-slate-500 gap-0.5">
       <span class="material-symbols-outlined text-[26px]">folder</span>
       <span class="text-[10px] font-medium uppercase tracking-wide">Pastas</span>
@@ -446,7 +636,7 @@ input:checked+.toggle-slider:before{transform:translateX(20px)}
   </nav>
 </div>
 
-</div><!-- /container -->
+</div><!-- /app-container -->
 
 <!-- MODALS -->
 <div id="modal-folder" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-folder')">
@@ -505,21 +695,32 @@ const getPrefs   = () => Object.assign({darkMode:false,confirmDelete:true,autoSa
 const savePrefs  = p  => saveL('nn_prefs', p);
 const uid        = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
 
+// ─── RESPONSIVE HELPER ──────────────────────────────────────────────────────
+function isDesktop(){ return window.innerWidth >= 768; }
+
 // ─── STATE ──────────────────────────────────────────────────────────────────
 let currentScreen='screen-folders', currentFolder=null, currentNote=null;
 let sortMode='date', deleteTargetId=null, editingFolderId=null, selectedFolderIcon='folder';
 const ICONS=['folder','work','lightbulb','person','favorite','star','home','book','travel_explore','fitness_center','restaurant','music_note','code','science'];
 
-// ─── DATA CALLBACKS (called by Firebase listener) ─────────────────────────
+// ─── DATA CALLBACKS ──────────────────────────────────────────────────────────
 window._appReady = false;
 window._onDataUpdate = (type) => {
-  if (currentScreen==='screen-folders') renderFolders();
-  if (currentScreen==='screen-notes' && (type==='notes')) renderNoteList();
+  renderFolders();
+  if (type==='notes') renderNoteList();
   if (currentScreen==='screen-settings') renderStorage();
 };
 
-// ─── NAVIGATION ─────────────────────────────────────────────────────────────
+// ─── NAVIGATION ──────────────────────────────────────────────────────────────
 function navigate(id, dir='forward'){
+  if(isDesktop()){
+    // On desktop, screens are always visible — just update state
+    currentScreen = id;
+    if(id==='screen-folders') renderFolders();
+    if(id==='screen-settings') renderSettings();
+    return;
+  }
+  // Mobile: existing slide behavior
   document.getElementById(currentScreen).classList.remove('active');
   const nx=document.getElementById(id);
   nx.classList.add('active');
@@ -528,6 +729,29 @@ function navigate(id, dir='forward'){
   currentScreen=id;
   if(id==='screen-folders') renderFolders();
   if(id==='screen-settings') renderSettings();
+}
+
+// Navigate to settings (works on both mobile and desktop)
+function navigateSettings(){
+  if(isDesktop()){
+    document.getElementById('screen-settings').classList.add('desk-active');
+    document.getElementById('screen-editor').classList.add('desk-hidden');
+    currentScreen='screen-settings';
+    renderSettings();
+  } else {
+    navigate('screen-settings');
+  }
+}
+
+// Navigate back from settings
+function navigateBack(){
+  if(isDesktop()){
+    document.getElementById('screen-settings').classList.remove('desk-active');
+    document.getElementById('screen-editor').classList.remove('desk-hidden');
+    currentScreen='screen-editor';
+  } else {
+    navigate('screen-folders','back');
+  }
 }
 
 // ─── DARK MODE ───────────────────────────────────────────────────────────────
@@ -540,14 +764,14 @@ function applyDark(on){
 function toggleDarkMode(on){ const p=getPrefs(); p.darkMode=on; savePrefs(p); applyDark(on); }
 document.getElementById('dark-toggle').onclick=()=>toggleDarkMode(!getPrefs().darkMode);
 
-// ─── TOAST ───────────────────────────────────────────────────────────────────
+// ─── TOAST ────────────────────────────────────────────────────────────────────
 let _tt;
 function showToast(msg){
   const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
   clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),2500);
 }
 
-// ─── FOLDERS ────────────────────────────────────────────────────────────────
+// ─── FOLDERS ─────────────────────────────────────────────────────────────────
 function renderFolders(){
   const notes=getNotes(), folders=getFolders(), labels=getLabels();
   const q=(document.getElementById('folder-search').value||'').toLowerCase();
@@ -571,8 +795,20 @@ function renderFolders(){
   ).join('');
 }
 document.getElementById('folder-search').addEventListener('input',renderFolders);
-function openAllNotes(){ currentFolder=null; document.getElementById('notes-title').textContent='Todas as Notas'; navigate('screen-notes'); renderNoteList(); }
-function openFolder(id,name){ currentFolder=id; document.getElementById('notes-title').textContent=name; navigate('screen-notes'); renderNoteList(); }
+
+function openAllNotes(){
+  currentFolder=null;
+  document.getElementById('notes-title').textContent='Todas as Notas';
+  if(!isDesktop()) navigate('screen-notes');
+  renderNoteList();
+}
+
+function openFolder(id,name){
+  currentFolder=id;
+  document.getElementById('notes-title').textContent=name;
+  if(!isDesktop()) navigate('screen-notes');
+  renderNoteList();
+}
 
 // Folder modal
 function openFolderModal(editId=null){
@@ -613,11 +849,24 @@ async function deleteLabel(name){
   await window.FB_deleteLabel(name); showToast('Etiqueta removida');
 }
 
-// ─── NOTES LIST ──────────────────────────────────────────────────────────────
-let _sortOpen=false;
-function toggleSort(){ _sortOpen=!_sortOpen; document.getElementById('sort-menu').classList.toggle('hidden',!_sortOpen); }
-document.addEventListener('click',e=>{ if(!document.getElementById('sort-btn')?.contains(e.target)){ _sortOpen=false; document.getElementById('sort-menu')?.classList.add('hidden'); } });
-function setSortMode(m){ sortMode=m; renderNoteList(); toggleSort(); }
+// ─── NOTES LIST ───────────────────────────────────────────────────────────────
+let _sortOpen=null;
+
+function toggleSort(which){
+  const menuId = which==='desk' ? 'sort-menu-desk' : 'sort-menu-mob';
+  const isOpen = !document.getElementById(menuId).classList.contains('hidden');
+  // Close all sort menus
+  document.getElementById('sort-menu-desk')?.classList.add('hidden');
+  document.getElementById('sort-menu-mob')?.classList.add('hidden');
+  if(!isOpen) document.getElementById(menuId).classList.remove('hidden');
+}
+
+document.addEventListener('click',e=>{
+  if(!document.getElementById('sort-btn-mob')?.contains(e.target)) document.getElementById('sort-menu-mob')?.classList.add('hidden');
+  if(!document.getElementById('sort-btn-desk')?.contains(e.target)) document.getElementById('sort-menu-desk')?.classList.add('hidden');
+});
+
+function setSortMode(m){ sortMode=m; renderNoteList(); }
 
 function renderNoteList(){
   const notes=getNotes();
@@ -638,7 +887,8 @@ function renderNoteList(){
     list.innerHTML=`<div class="px-4 py-10 text-center"><span class="material-symbols-outlined text-slate-300 text-[48px]">note_add</span><p class="text-slate-400 text-sm mt-2">${q?'Nenhum resultado':'Nenhuma nota ainda'}</p></div>`;
     document.getElementById('notes-count').textContent=''; return;
   }
-  list.innerHTML=fl.map((n,i)=>`<div class="note-row note-item flex flex-col p-4 ${i<fl.length-1?'border-b border-slate-100 dark:border-slate-800':''}" onclick="openNote('${n.id}')">
+  const activeId = currentNote?.id;
+  list.innerHTML=fl.map((n,i)=>`<div class="note-row note-item flex flex-col p-4 ${i<fl.length-1?'border-b border-slate-100 dark:border-slate-800':''} ${isDesktop()&&n.id===activeId?'desk-active':''}" onclick="openNote('${n.id}')">
     <div class="flex justify-between items-start mb-0.5">
       <h3 class="font-bold text-[15px] truncate flex-1 mr-2">${hl(n.title||'Sem título',q)}</h3>
       <div class="flex items-center gap-1 shrink-0">
@@ -663,41 +913,111 @@ function fmtD(ts){
   return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
 }
 
-// ─── EDITOR ──────────────────────────────────────────────────────────────────
+// ─── EDITOR ───────────────────────────────────────────────────────────────────
 let _asInterval=null;
-function newNote(fId){ currentNote={id:uid(),title:'',body:'',folder:fId||null,labels:[],pinned:false,createdAt:Date.now(),updatedAt:Date.now(),isNew:true}; openEditor(); }
-function openNote(id){ const n=getNotes().find(x=>x.id===id); if(!n) return; currentNote={...n,isNew:false}; openEditor(); }
-function openEditor(){
+
+// Show/hide editor empty state
+function showEditorEmptyState(){
+  document.getElementById('editor-empty-state').style.display='flex';
+  document.getElementById('editor-main-content').style.display='none';
+  // Hide header actions
+  document.querySelectorAll('#screen-editor header button').forEach(b=>b.style.visibility='hidden');
+}
+function showEditorContent(){
+  document.getElementById('editor-empty-state').style.display='none';
+  document.getElementById('editor-main-content').style.display='flex';
+  document.querySelectorAll('#screen-editor header button').forEach(b=>b.style.visibility='visible');
+}
+
+function newNote(fId){
+  currentNote={id:uid(),title:'',body:'',folder:fId||null,labels:[],pinned:false,createdAt:Date.now(),updatedAt:Date.now(),isNew:true};
+  if(isDesktop()){
+    // Make sure settings is closed, editor is visible
+    document.getElementById('screen-settings').classList.remove('desk-active');
+    document.getElementById('screen-editor').classList.remove('desk-hidden');
+    showEditorContent();
+    populateEditor();
+    setTimeout(()=>document.getElementById('note-title').focus(),80);
+    renderNoteList(); // update active highlight
+  } else {
+    openEditor();
+  }
+}
+
+function openNote(id){
+  const n=getNotes().find(x=>x.id===id); if(!n) return;
+  currentNote={...n,isNew:false};
+  if(isDesktop()){
+    document.getElementById('screen-settings').classList.remove('desk-active');
+    document.getElementById('screen-editor').classList.remove('desk-hidden');
+    showEditorContent();
+    populateEditor();
+    setTimeout(()=>document.getElementById('note-body').focus(),80);
+    renderNoteList(); // re-render to update desk-active highlight
+  } else {
+    openEditor();
+  }
+}
+
+function populateEditor(){
   document.getElementById('note-title').value=currentNote.title||'';
   document.getElementById('note-body').value=currentNote.body||'';
   document.getElementById('note-date').textContent=currentNote.updatedAt
     ? new Date(currentNote.updatedAt).toLocaleString('pt-BR',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
   updPinBtn(); renderEditorLabels(); updFolderBadge(); updCharCount();
-  navigate('screen-editor');
-  setTimeout(()=>{ (!currentNote.title?document.getElementById('note-title'):document.getElementById('note-body')).focus(); },250);
   document.getElementById('note-body').oninput=updCharCount;
   clearInterval(_asInterval);
   if(getPrefs().autoSave) _asInterval=setInterval(()=>{ if(currentNote) _autoSave(); },30000);
 }
+
+function openEditor(){
+  populateEditor();
+  navigate('screen-editor');
+}
+
+// Back button in editor header
+function handleEditorBack(){
+  if(isDesktop()){
+    // On desktop, just save and show empty state
+    _autoSave().then(()=>{
+      currentNote=null;
+      showEditorEmptyState();
+      renderNoteList();
+    });
+  } else {
+    saveAndBack();
+  }
+}
+
 async function _autoSave(){
-  currentNote.title=document.getElementById('note-title').value;
-  currentNote.body=document.getElementById('note-body').value;
+  if(!currentNote) return;
+  const title = document.getElementById('note-title')?.value;
+  const body  = document.getElementById('note-body')?.value;
+  if(title===undefined) return; // editor not mounted
+  currentNote.title=title;
+  currentNote.body=body;
   setESync('saving');
   await window.FB_saveNote({...currentNote});
   setESync('saved');
 }
+
 async function saveAndBack(){
   clearInterval(_asInterval);
   const title=document.getElementById('note-title').value.trim();
   const body=document.getElementById('note-body').value.trim();
-  if(!title&&!body){ navigate('screen-notes','back'); renderNoteList(); return; }
+  if(!title&&!body){
+    if(!isDesktop()) navigate('screen-notes','back');
+    return;
+  }
   currentNote.title=title||'Sem título';
   currentNote.body=document.getElementById('note-body').value;
   currentNote.updatedAt=Date.now();
   await window.FB_saveNote({...currentNote});
   showToast('Nota salva no Firestore ✓');
-  navigate('screen-notes','back');
+  if(!isDesktop()) navigate('screen-notes','back');
+  else renderNoteList();
 }
+
 function setESync(s){
   const el=document.getElementById('editor-sync-dot'); if(!el) return;
   if(s==='saving'){ el.className='w-2 h-2 rounded-full bg-amber-400 animate-pulse'; el.title='Salvando…'; }
@@ -728,17 +1048,24 @@ function insertMd(b,a){ const ta=document.getElementById('note-body'),s=ta.selec
 function insertChecklist(){ const ta=document.getElementById('note-body'),pos=ta.selectionStart,ins='\n☐ '; ta.value=ta.value.slice(0,pos)+ins+ta.value.slice(pos); ta.selectionStart=ta.selectionEnd=pos+ins.length; ta.focus(); updCharCount(); }
 function insertHeading(){ const ta=document.getElementById('note-body'),pos=ta.selectionStart,ins='\n## '; ta.value=ta.value.slice(0,pos)+ins+ta.value.slice(pos); ta.selectionStart=ta.selectionEnd=pos+ins.length; ta.focus(); }
 
-// ─── DELETE ──────────────────────────────────────────────────────────────────
+// ─── DELETE ────────────────────────────────────────────────────────────────────
 function deleteCurrentNote(){ if(!currentNote) return; deleteTargetId=currentNote.id; if(!getPrefs().confirmDelete){confirmDelete();return;} openModal('modal-delete'); }
 async function confirmDelete(){
   if(!deleteTargetId) return;
   closeModal('modal-delete');
   await window.FB_deleteNote(deleteTargetId);
-  deleteTargetId=null; showToast('Nota excluída');
-  navigate('screen-notes','back');
+  deleteTargetId=null;
+  showToast('Nota excluída');
+  currentNote=null;
+  if(isDesktop()){
+    showEditorEmptyState();
+    renderNoteList();
+  } else {
+    navigate('screen-notes','back');
+  }
 }
 
-// ─── SETTINGS ────────────────────────────────────────────────────────────────
+// ─── SETTINGS ─────────────────────────────────────────────────────────────────
 function renderSettings(){
   const p=getPrefs();
   document.getElementById('dark-setting').checked=p.darkMode;
@@ -766,15 +1093,46 @@ function clearLocalCache(){
   showToast('Cache limpo — aguarde sync…'); renderFolders();
 }
 
-// ─── MODALS ──────────────────────────────────────────────────────────────────
+// ─── MODALS ────────────────────────────────────────────────────────────────────
 function openModal(id){ document.getElementById(id).classList.add('open'); }
 function closeModal(id){ document.getElementById(id).classList.remove('open'); }
 
-// ─── INIT ────────────────────────────────────────────────────────────────────
+// ─── KEYBOARD SHORTCUTS (desktop) ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if(!isDesktop()) return;
+  // N = nova nota (when not typing)
+  if(e.key==='n' && !e.ctrlKey && !e.metaKey && document.activeElement.tagName!=='INPUT' && document.activeElement.tagName!=='TEXTAREA'){
+    newNote(currentFolder);
+  }
+  // Ctrl+S = save
+  if((e.ctrlKey||e.metaKey) && e.key==='s'){
+    e.preventDefault();
+    if(currentNote) _autoSave().then(()=>showToast('Nota salva ✓'));
+  }
+  // Escape = close editor / settings
+  if(e.key==='Escape'){
+    if(document.getElementById('screen-settings').classList.contains('desk-active')){
+      navigateBack();
+    }
+  }
+});
+
+// ─── INIT ──────────────────────────────────────────────────────────────────────
 (function(){
   applyDark(getPrefs().darkMode);
   renderFolders();
-  setTimeout(()=>{ window._appReady=true; },500);
+  renderNoteList();
+
+  // On desktop, show empty editor state initially
+  if(isDesktop()) showEditorEmptyState();
+
+  setTimeout(()=>{ window._appReady=true; }, 500);
+
+  // Auto-open "Todas as Notas" on desktop if no folder selected
+  if(isDesktop()){
+    currentFolder=null;
+    document.getElementById('notes-title').textContent='Todas as Notas';
+  }
 
   // Register Service Worker (PWA)
   if ('serviceWorker' in navigator) {
@@ -798,6 +1156,17 @@ function closeModal(id){ document.getElementById(id).classList.remove('open'); }
     showToast('App instalado! 🎉');
   });
   window.installApp = () => { if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt=null; } };
+
+  // Handle resize (mobile <-> desktop transitions)
+  window.addEventListener('resize', ()=>{
+    if(isDesktop()){
+      // Ensure all 3 panels are visible
+      document.getElementById('screen-folders').classList.add('active');
+      document.getElementById('screen-notes').classList.add('active');
+      document.getElementById('screen-editor').classList.add('active');
+      if(!currentNote) showEditorEmptyState();
+    }
+  });
 })();
 </script>
 </body>
