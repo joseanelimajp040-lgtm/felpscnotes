@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="light">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<title>FelpscNotes</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#135bec"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="default"/>
+<meta name="apple-mobile-web-app-title" content="FelpscNotes"/>
+<link rel="apple-touch-icon" href="icon-192.png"/>
+<meta name="description" content="Bloco de notas pessoal com sincronização Firebase"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+
+<!-- Firebase SDK (ES Module) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import {
+    getFirestore, collection, doc, setDoc, deleteDoc,
+    onSnapshot, serverTimestamp, query, orderBy
+  } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBtFGsJNpqjwQSQCHVo6TraP-HR0XTD2vo",
+    authDomain: "felpscnotes.firebaseapp.com",
+    projectId: "felpscnotes",
+    storageBucket: "felpscnotes.firebasestorage.app",
+    messagingSenderId: "232828401734",
+    appId: "1:232828401734:web:8fa72f20abaa1f056ab247"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+
+  // ── sync status indicator ────────────────────────────────────────
+  function setSyncStatus(status) {
+    const map = {
+      syncing: { cls:'bg-amber-400 animate-pulse', label:'Sincronizando…' },
+      synced:  { cls:'bg-emerald-500',             label:'Sincronizado' },
+      error:   { cls:'bg-red-500',                 label:'Erro de conexão' },
+      offline: { cls:'bg-slate-400',               label:'Offline' },
+    };
+    const s = map[status]||map.offline;
+    document.querySelectorAll('.sync-dot').forEach(el => { el.className = `sync-dot w-2.5 h-2.5 rounded-full shrink-0 ${s.cls}`; });
+    document.querySelectorAll('.sync-label').forEach(el => { el.textContent = s.label; });
+    if (status==='synced') {
+      document.querySelectorAll('.sync-ts').forEach(el => { el.textContent = 'Agora mesmo'; });
+    }
+  }
+
+  // ── real-time listeners ──────────────────────────────────────────
+  onSnapshot(query(collection(db,'notes'), orderBy('updatedAt','desc')),
+    snap => {
+      const notes = [];
+      snap.forEach(d => {
+        const data = { ...d.data(), id: d.id };
+        if (data.updatedAt?.toMillis) data.updatedAt = data.updatedAt.toMillis();
+        if (data.createdAt?.toMillis) data.createdAt = data.createdAt.toMillis();
+        notes.push(data);
+      });
+      try { localStorage.setItem('nn_notes', JSON.stringify(notes)); } catch{}
+      setSyncStatus('synced');
+      if (window._appReady) { window._onDataUpdate?.('notes'); }
+    },
+    err => { console.error(err); setSyncStatus('error'); }
+  );
+
+  onSnapshot(collection(db,'folders'), snap => {
+    const folders = [];
+    snap.forEach(d => folders.push({ ...d.data(), id: d.id }));
+    if (!folders.length) {
+      // seed default folder
+      setDoc(doc(db,'folders','default'), { name:'Notas', icon:'note_stack' });
+      return;
+    }
+    try { localStorage.setItem('nn_folders', JSON.stringify(folders)); } catch{}
+    if (window._appReady) window._onDataUpdate?.('folders');
+  });
+
+  onSnapshot(collection(db,'labels'), snap => {
+    const labels = [];
+    snap.forEach(d => labels.push(d.data().name));
+    try { localStorage.setItem('nn_labels', JSON.stringify(labels.length ? labels : ['trabalho','pessoal','ideias'])); } catch{}
+    if (window._appReady) window._onDataUpdate?.('labels');
+  });
+
+  // ── global write helpers ─────────────────────────────────────────
+  window.FB_saveNote = async note => {
+    setSyncStatus('syncing');
+    const { id, isNew, ...data } = note;
+    data.updatedAt = serverTimestamp();
+    if (isNew) data.createdAt = serverTimestamp();
+    await setDoc(doc(db,'notes',id), data);
+  };
+  window.FB_deleteNote   = async id => { setSyncStatus('syncing'); await deleteDoc(doc(db,'notes',id)); };
+  window.FB_saveFolder   = async folder => { const {id,...d}=folder; await setDoc(doc(db,'folders',id),d); };
+  window.FB_deleteFolder = async id => { await deleteDoc(doc(db,'folders',id)); };
+  window.FB_saveLabel    = async name => { await setDoc(doc(db,'labels',name),{name}); };
+  window.FB_deleteLabel  = async name => { await deleteDoc(doc(db,'labels',name)); };
+
+  setSyncStatus('syncing');
+  window.addEventListener('online',  ()=>setSyncStatus('syncing'));
+  window.addEventListener('offline', ()=>setSyncStatus('offline'));
+</script>
+
+<script>
+tailwind.config = {
+  darkMode:"class",
+  theme:{
+    extend:{
+      colors:{
+        primary:"#135bec","primary-dark":"#0d47c8",
+        "bg-light":"#f4f5f7","bg-dark":"#0d1117","surface-dark":"#161b27"
+      },
+      fontFamily:{ sans:["DM Sans","sans-serif"], mono:["DM Mono","monospace"] }
+    }
+  }
+};
+</script>
+<style>
+*{-webkit-tap-highlight-color:transparent}
+body{font-family:"DM Sans",sans-serif;min-height:100dvh;overscroll-behavior:none}
+.screen{display:none;flex-direction:column;height:100dvh}
+.screen.active{display:flex}
+.material-symbols-outlined{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;user-select:none}
+.fill-icon{font-variation-settings:'FILL' 1,'wght' 400,'GRAD' 0,'opsz' 24}
+.note-item{transition:background .12s;background:white}
+.dark .note-item{background:#161b27}
+.slide-in{animation:sIn .22s cubic-bezier(.4,0,.2,1)}
+.slide-back{animation:sBk .22s cubic-bezier(.4,0,.2,1)}
+@keyframes sIn{from{opacity:0;transform:translateX(24px)}to{opacity:1;transform:translateX(0)}}
+@keyframes sBk{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:translateX(0)}}
+textarea,input[type="text"]{outline:none;box-shadow:none!important}
+.toggle-switch{position:relative;display:inline-block;width:44px;height:24px}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;background:#cbd5e1;border-radius:24px;transition:.3s}
+.toggle-slider:before{position:absolute;content:"";height:18px;width:18px;left:3px;bottom:3px;background:white;border-radius:50%;transition:.3s}
+input:checked+.toggle-slider{background:#135bec}
+input:checked+.toggle-slider:before{transform:translateX(20px)}
+.dark .toggle-slider{background:#334155}
+::-webkit-scrollbar{width:0}
+.editor-ta{resize:none;width:100%;border:none;background:transparent;padding:0;font-family:"DM Sans",sans-serif;font-size:1.05rem;line-height:1.8;color:#374151}
+.dark .editor-ta{color:#cbd5e1}
+.editor-ta::placeholder{color:#94a3b8}
+.fab{position:fixed;right:calc(50% - 180px);bottom:88px;width:56px;height:56px;border-radius:50%;background:#135bec;color:white;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 24px rgba(19,91,236,.4);cursor:pointer;transition:transform .15s;z-index:30}
+.fab:hover{transform:scale(1.07)}
+.fab:active{transform:scale(.94)}
+.chip{display:inline-flex;align-items:center;padding:4px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;font-size:.75rem;font-weight:600;color:#475569;cursor:pointer;transition:background .15s}
+.dark .chip{background:#1e293b;border-color:#334155;color:#94a3b8}
+.chip.active{background:#dbeafe;color:#135bec;border-color:#135bec}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100;display:none;align-items:flex-end;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal-sheet{background:white;width:100%;max-width:448px;border-radius:20px 20px 0 0;padding:24px;animation:su .25s cubic-bezier(.4,0,.2,1)}
+.dark .modal-sheet{background:#161b27}
+@keyframes su{from{transform:translateY(60px);opacity:0}to{transform:translateY(0);opacity:1}}
+.storage-bar{height:10px;background:#e2e8f0;border-radius:99px;overflow:hidden;margin:12px 0 8px}
+.dark .storage-bar{background:#1e293b}
+.storage-fill{height:100%;background:linear-gradient(90deg,#135bec,#60a5fa);border-radius:99px;transition:width .6s}
+.ctx-menu{position:absolute;right:0;top:100%;background:white;border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.12);z-index:50;min-width:170px;overflow:hidden}
+.dark .ctx-menu{background:#1e293b;border-color:#334155}
+.ctx-item{display:flex;align-items:center;gap:10px;padding:10px 16px;font-size:.875rem;font-weight:500;cursor:pointer}
+.ctx-item:hover{background:#f8fafc}
+.dark .ctx-item:hover{background:#0f172a}
+.note-row{cursor:pointer;transition:background .12s}
+.note-row:active{background:#f1f5f9}
+.dark .note-row:active{background:#1e293b}
+.search-hl{background:#fef08a;border-radius:2px}
+.toast{position:fixed;bottom:100px;left:50%;transform:translateX(-50%) translateY(20px);background:#1e293b;color:white;padding:10px 20px;border-radius:12px;font-size:.85rem;font-weight:500;opacity:0;transition:all .3s;z-index:200;white-space:nowrap;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.fb-badge{display:inline-flex;align-items:center;gap:4px;background:#fff7ed;color:#ea580c;border:1px solid #fed7aa;border-radius:999px;font-size:.6rem;font-weight:700;padding:2px 7px;letter-spacing:.03em}
+.dark .fb-badge{background:#431407;color:#fb923c;border-color:#7c2d12}
+</style>
+</head>
+
+<body class="bg-bg-light dark:bg-bg-dark text-slate-900 dark:text-slate-100 antialiased">
+<div class="relative mx-auto max-w-md" style="min-height:100dvh">
+<div id="toast" class="toast"></div>
+
+<!-- ═══════════════════════════ SCREEN 1 — FOLDERS ═══════════════════════════ -->
+<div id="screen-folders" class="screen active bg-bg-light dark:bg-bg-dark">
+  <header class="sticky top-0 z-10 bg-bg-light/90 dark:bg-bg-dark/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-5 py-4">
+    <div class="flex items-center justify-between mb-1">
+      <div class="flex items-center gap-2">
+        <h1 class="text-2xl font-bold tracking-tight">Pastas</h1>
+        <span class="fb-badge">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M3.89 15.67L6.37 2.5 11 10.71 3.89 15.67zm16.22 0L13 10.71l4.63-8.21 2.48 13.17zM12 21.5L3.89 15.67l8.11-2.77 8.11 2.77L12 21.5z"/></svg>
+          Firestore
+        </span>
+      </div>
+      <div class="flex gap-1">
+        <button id="dark-toggle" class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400">
+          <span class="material-symbols-outlined text-[22px]" id="dark-icon">dark_mode</span>
+        </button>
+        <button onclick="openFolderModal()" class="p-2 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-primary">
+          <span class="material-symbols-outlined text-[22px]">create_new_folder</span>
+        </button>
+      </div>
+    </div>
+    <!-- Sync row -->
+    <div class="flex items-center gap-2 mb-3">
+      <div class="sync-dot w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0"></div>
+      <span class="sync-label text-[11px] text-slate-400 font-medium">Conectando…</span>
+      <span class="text-slate-300 dark:text-slate-600 text-[11px]">·</span>
+      <span class="sync-ts text-[11px] text-slate-400"></span>
+    </div>
+    <label class="relative flex items-center">
+      <span class="material-symbols-outlined absolute left-3 text-slate-400 text-[20px]">search</span>
+      <input id="folder-search" type="text" placeholder="Buscar" class="w-full bg-white dark:bg-surface-dark border border-slate-200 dark:border-slate-700 rounded-xl py-2.5 pl-10 pr-4 text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-primary/20 transition-all"/>
+    </label>
+  </header>
+
+  <main class="flex-1 overflow-y-auto px-5 py-3 pb-24">
+    <p class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Inteligentes</p>
+    <div class="bg-white dark:bg-surface-dark rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800 mb-5">
+      <div class="note-row flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 dark:border-slate-800" onclick="openAllNotes()">
+        <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0"><span class="material-symbols-outlined fill-icon text-[20px]">note_stack</span></div>
+        <span class="flex-1 font-medium text-[15px]">Todas as Notas</span>
+        <span id="all-count" class="text-xs text-slate-400 font-medium">–</span>
+        <span class="material-symbols-outlined text-slate-300 text-lg">chevron_right</span>
+      </div>
+      <div class="note-row flex items-center gap-3 px-4 py-3.5" onclick="openFolder('__pinned__','Fixadas')">
+        <div class="w-9 h-9 rounded-lg bg-yellow-100 flex items-center justify-center text-yellow-500 shrink-0"><span class="material-symbols-outlined fill-icon text-[20px]">push_pin</span></div>
+        <span class="flex-1 font-medium text-[15px]">Fixadas</span>
+        <span id="pinned-count" class="text-xs text-slate-400 font-medium">–</span>
+        <span class="material-symbols-outlined text-slate-300 text-lg">chevron_right</span>
+      </div>
+    </div>
+
+    <p class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Minhas Pastas</p>
+    <div id="folder-list" class="bg-white dark:bg-surface-dark rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800 mb-5"></div>
+
+    <p class="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Etiquetas</p>
+    <div id="label-list" class="flex flex-wrap gap-2 mb-3"></div>
+    <button onclick="openLabelModal()" class="text-xs text-primary font-semibold flex items-center gap-1 hover:underline">
+      <span class="material-symbols-outlined text-[16px]">add</span> Nova etiqueta
+    </button>
+  </main>
+
+  <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 py-3 z-20">
+    <button class="flex flex-col items-center text-primary gap-0.5">
+      <span class="material-symbols-outlined fill-icon text-[26px]">folder</span>
+      <span class="text-[10px] font-semibold uppercase tracking-wide">Pastas</span>
+    </button>
+    <!-- Install PWA button (hidden until browser fires beforeinstallprompt) -->
+    <button id="install-btn" onclick="installApp()" style="display:none" class="flex flex-col items-center text-emerald-500 gap-0.5">
+      <span class="material-symbols-outlined text-[26px]">install_mobile</span>
+      <span class="text-[10px] font-semibold uppercase tracking-wide">Instalar</span>
+    </button>
+    <button onclick="navigate('screen-settings')" class="flex flex-col items-center text-slate-400 dark:text-slate-500 gap-0.5">
+      <span class="material-symbols-outlined text-[26px]">settings</span>
+      <span class="text-[10px] font-medium uppercase tracking-wide">Config.</span>
+    </button>
+  </nav>
+  <div class="fab" onclick="newNote(null)"><span class="material-symbols-outlined text-[28px]">edit_note</span></div>
+</div>
+
+<!-- ═══════════════════════════ SCREEN 2 — NOTES LIST ═══════════════════════════ -->
+<div id="screen-notes" class="screen bg-bg-light dark:bg-bg-dark">
+  <header class="sticky top-0 z-10 bg-bg-light/90 dark:bg-bg-dark/90 backdrop-blur-md px-4 pt-4 pb-2">
+    <div class="flex items-center justify-between mb-2">
+      <button onclick="navigate('screen-folders','back')" class="flex items-center text-primary font-medium gap-0.5">
+        <span class="material-symbols-outlined text-[22px]">chevron_left</span>
+        <span class="text-sm">Pastas</span>
+      </button>
+      <div class="relative">
+        <button id="sort-btn" onclick="toggleSort()" class="p-1.5 text-primary rounded-full hover:bg-primary/10">
+          <span class="material-symbols-outlined text-[22px]">sort</span>
+        </button>
+        <div id="sort-menu" class="ctx-menu hidden">
+          <div class="ctx-item" onclick="setSortMode('date')"><span class="material-symbols-outlined text-[18px]">schedule</span>Mais recente</div>
+          <div class="ctx-item" onclick="setSortMode('title')"><span class="material-symbols-outlined text-[18px]">sort_by_alpha</span>Título A-Z</div>
+          <div class="ctx-item" onclick="setSortMode('oldest')"><span class="material-symbols-outlined text-[18px]">history</span>Mais antigo</div>
+        </div>
+      </div>
+    </div>
+    <h1 id="notes-title" class="text-3xl font-bold tracking-tight mb-3 px-1">Notas</h1>
+    <label class="relative flex items-center px-1 mb-1">
+      <span class="material-symbols-outlined absolute left-4 text-slate-400 text-[20px]">search</span>
+      <input id="note-search" type="text" placeholder="Buscar" oninput="renderNoteList()" class="w-full bg-white dark:bg-surface-dark border border-slate-200 dark:border-slate-700 rounded-xl py-2 pl-10 pr-4 text-sm placeholder:text-slate-400 focus:ring-2 focus:ring-primary/20 transition-all"/>
+    </label>
+  </header>
+  <main class="flex-1 overflow-y-auto px-4 py-2">
+    <div id="notes-list" class="bg-white dark:bg-surface-dark rounded-2xl overflow-hidden shadow-sm border border-slate-200 dark:border-slate-800"></div>
+    <p id="notes-count" class="text-center text-slate-400 text-sm mt-5 mb-24"></p>
+  </main>
+  <div class="fab" onclick="newNote(currentFolder)"><span class="material-symbols-outlined text-[28px]">add</span></div>
+</div>
+
+<!-- ═══════════════════════════ SCREEN 3 — EDITOR ═══════════════════════════ -->
+<div id="screen-editor" class="screen bg-white dark:bg-surface-dark">
+  <header class="flex items-center px-3 py-2.5 border-b border-slate-200 dark:border-slate-800 justify-between shrink-0">
+    <button onclick="saveAndBack()" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+      <span class="material-symbols-outlined text-slate-700 dark:text-slate-300">arrow_back</span>
+    </button>
+    <div class="flex items-center gap-1">
+      <div id="editor-sync-dot" class="w-2 h-2 rounded-full bg-slate-300 mr-1" title=""></div>
+      <button onclick="togglePin()" class="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+        <span id="pin-icon" class="material-symbols-outlined text-[22px] text-slate-400">push_pin</span>
+      </button>
+      <button onclick="deleteCurrentNote()" class="p-2 rounded-full hover:bg-red-50 dark:hover:bg-red-900/20">
+        <span class="material-symbols-outlined text-[22px] text-slate-400">delete</span>
+      </button>
+      <button onclick="saveAndBack()" class="ml-1 px-4 py-1.5 bg-primary text-white rounded-lg font-semibold text-sm hover:bg-primary-dark transition-colors">Salvar</button>
+    </div>
+  </header>
+  <main class="flex-1 flex flex-col overflow-hidden">
+    <div class="px-5 pt-5 pb-2 shrink-0">
+      <input id="note-title" type="text" placeholder="Título" class="w-full text-2xl font-bold border-none bg-transparent p-0 mb-2 placeholder:text-slate-300 dark:placeholder:text-slate-700"/>
+      <div class="flex items-center gap-3 flex-wrap">
+        <span id="note-date" class="text-xs text-slate-400 font-medium"></span>
+        <div id="editor-labels" class="flex flex-wrap gap-1.5"></div>
+        <button onclick="openLabelPickerModal()" class="text-xs text-primary font-medium flex items-center gap-0.5 hover:underline">
+          <span class="material-symbols-outlined text-[14px]">label</span> etiqueta
+        </button>
+        <div class="text-xs text-slate-400 flex items-center gap-0.5">
+          <span class="material-symbols-outlined text-[14px]">folder</span>
+          <span id="folder-badge-name">–</span>
+        </div>
+      </div>
+    </div>
+    <div class="flex-1 overflow-y-auto px-5 py-3">
+      <textarea id="note-body" class="editor-ta" placeholder="Comece a escrever…" style="min-height:50vh;height:100%"></textarea>
+    </div>
+  </main>
+  <div class="shrink-0 bg-white/90 dark:bg-surface-dark/90 backdrop-blur-md border-t border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center justify-between">
+    <div class="flex gap-0.5">
+      <button onclick="insertMd('**','**')" class="p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><span class="material-symbols-outlined text-[22px]">format_bold</span></button>
+      <button onclick="insertMd('_','_')" class="p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><span class="material-symbols-outlined text-[22px]">format_italic</span></button>
+      <button onclick="insertChecklist()" class="p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><span class="material-symbols-outlined text-[22px]">checklist</span></button>
+      <button onclick="insertMd('`','`')" class="p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><span class="material-symbols-outlined text-[22px]">code</span></button>
+      <button onclick="insertHeading()" class="p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg"><span class="material-symbols-outlined text-[22px]">format_h2</span></button>
+    </div>
+    <span id="char-count" class="text-xs text-slate-400 font-mono">0 chars</span>
+  </div>
+  <div class="h-4 bg-white dark:bg-surface-dark shrink-0"></div>
+</div>
+
+<!-- ═══════════════════════════ SCREEN 4 — SETTINGS ═══════════════════════════ -->
+<div id="screen-settings" class="screen bg-bg-light dark:bg-bg-dark">
+  <header class="sticky top-0 z-10 bg-bg-light/90 dark:bg-bg-dark/90 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-5 py-4 flex items-center gap-3">
+    <button onclick="navigate('screen-folders','back')" class="p-1.5 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400">
+      <span class="material-symbols-outlined">arrow_back</span>
+    </button>
+    <h1 class="text-xl font-bold flex-1">Configurações</h1>
+    <span class="text-[10px] font-mono text-slate-400">v2.0</span>
+  </header>
+  <main class="flex-1 overflow-y-auto pb-24">
+    <!-- Firebase info -->
+    <section class="mt-5">
+      <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Projeto Firebase</p>
+      <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+        <div class="flex items-center gap-3 px-4 py-4">
+          <div class="w-10 h-10 rounded-xl bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-500 shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3.89 15.67L6.37 2.5 11 10.71 3.89 15.67zm16.22 0L13 10.71l4.63-8.21 2.48 13.17zM12 21.5L3.89 15.67l8.11-2.77 8.11 2.77L12 21.5z"/></svg>
+          </div>
+          <div class="flex-1"><p class="text-xs text-slate-400 font-medium">Projeto</p><p class="font-semibold text-sm">felpscnotes</p></div>
+          <div class="flex items-center gap-1.5">
+            <div class="sync-dot w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0"></div>
+            <span class="sync-label text-xs text-slate-400">–</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 px-4 py-4">
+          <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary shrink-0"><span class="material-symbols-outlined text-[20px]">database</span></div>
+          <div class="flex-1"><p class="text-xs text-slate-400 font-medium">Banco de dados</p><p class="font-semibold text-sm">Cloud Firestore</p></div>
+          <span class="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-0.5 rounded-full">ATIVO</span>
+        </div>
+        <div class="flex items-center gap-3 px-4 py-4">
+          <div class="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0"><span class="material-symbols-outlined text-[20px]">lock</span></div>
+          <div class="flex-1"><p class="text-xs text-slate-400 font-medium">Autenticação</p><p class="font-semibold text-sm text-slate-400">Desativada</p></div>
+          <span class="text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">OFF</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Sync -->
+    <section class="mt-5">
+      <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Sincronização em tempo real</p>
+      <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
+        <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <div class="sync-dot w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shrink-0"></div>
+            <p class="sync-label font-medium text-sm">Conectando…</p>
+          </div>
+          <button onclick="exportData()" class="bg-primary text-white px-3 py-1.5 rounded-lg text-xs font-semibold hover:bg-primary-dark">Exportar JSON</button>
+        </div>
+        <p class="text-xs text-slate-400 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[14px]">schedule</span>
+          Última sync: <span class="sync-ts ml-1">–</span>
+        </p>
+      </div>
+    </section>
+
+    <!-- Storage -->
+    <section class="mt-5">
+      <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Cache local</p>
+      <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 p-4">
+        <div class="flex justify-between items-end mb-1">
+          <div><span id="storage-used" class="text-xl font-bold">–</span><span class="text-slate-400 text-sm ml-1">cache</span></div>
+          <span id="notes-total-count" class="text-xs text-slate-400"></span>
+        </div>
+        <div class="storage-bar"><div id="storage-fill" class="storage-fill" style="width:2%"></div></div>
+        <p class="text-xs text-slate-400">Dados sincronizados com o Firestore e cacheados offline.</p>
+      </div>
+    </section>
+
+    <!-- Prefs -->
+    <section class="mt-5">
+      <p class="text-xs font-bold uppercase tracking-wider text-slate-400 px-5 mb-2">Preferências</p>
+      <div class="mx-4 bg-white dark:bg-surface-dark rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
+        <div class="flex items-center justify-between px-4 py-4">
+          <div><p class="font-medium text-sm">Modo escuro</p><p class="text-xs text-slate-400">Aparência da interface</p></div>
+          <label class="toggle-switch"><input type="checkbox" id="dark-setting" onchange="toggleDarkMode(this.checked)"/><span class="toggle-slider"></span></label>
+        </div>
+        <div class="flex items-center justify-between px-4 py-4">
+          <div><p class="font-medium text-sm">Confirmação ao deletar</p><p class="text-xs text-slate-400">Pedir confirmação antes de excluir</p></div>
+          <label class="toggle-switch"><input type="checkbox" id="confirm-delete" checked onchange="savePref('confirmDelete',this.checked)"/><span class="toggle-slider"></span></label>
+        </div>
+        <div class="flex items-center justify-between px-4 py-4">
+          <div><p class="font-medium text-sm">Auto-save</p><p class="text-xs text-slate-400">Salvar automaticamente a cada 30s</p></div>
+          <label class="toggle-switch"><input type="checkbox" id="auto-save" checked onchange="savePref('autoSave',this.checked)"/><span class="toggle-slider"></span></label>
+        </div>
+      </div>
+    </section>
+
+    <div class="mt-6 mx-4 mb-4">
+      <button onclick="clearLocalCache()" class="w-full bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 py-3 rounded-xl font-semibold text-sm hover:bg-red-100 transition-colors">
+        Limpar cache local
+      </button>
+    </div>
+  </main>
+
+  <nav class="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-white/95 dark:bg-surface-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 flex items-center justify-between px-8 py-3 z-20">
+    <button onclick="navigate('screen-folders','back')" class="flex flex-col items-center text-slate-400 dark:text-slate-500 gap-0.5">
+      <span class="material-symbols-outlined text-[26px]">folder</span>
+      <span class="text-[10px] font-medium uppercase tracking-wide">Pastas</span>
+    </button>
+    <button class="flex flex-col items-center text-primary gap-0.5">
+      <span class="material-symbols-outlined fill-icon text-[26px]">settings</span>
+      <span class="text-[10px] font-semibold uppercase tracking-wide">Config.</span>
+    </button>
+  </nav>
+</div>
+
+</div><!-- /container -->
+
+<!-- MODALS -->
+<div id="modal-folder" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-folder')">
+  <div class="modal-sheet">
+    <h2 id="folder-modal-title" class="font-bold text-lg mb-4">Nova Pasta</h2>
+    <input id="folder-name-input" type="text" placeholder="Nome da pasta" class="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm bg-bg-light dark:bg-bg-dark focus:ring-2 focus:ring-primary/30 mb-3" onkeydown="if(event.key==='Enter')confirmFolder()"/>
+    <div id="folder-icon-picker" class="flex gap-2 flex-wrap mb-4"></div>
+    <div class="flex gap-3">
+      <button onclick="closeModal('modal-folder')" class="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-400">Cancelar</button>
+      <button onclick="confirmFolder()" class="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-semibold">Criar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-label" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-label')">
+  <div class="modal-sheet">
+    <h2 class="font-bold text-lg mb-4">Nova Etiqueta</h2>
+    <input id="label-name-input" type="text" placeholder="ex: trabalho" class="w-full border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-sm bg-bg-light dark:bg-bg-dark focus:ring-2 focus:ring-primary/30 mb-4" onkeydown="if(event.key==='Enter')confirmLabel()"/>
+    <div class="flex gap-3">
+      <button onclick="closeModal('modal-label')" class="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-600">Cancelar</button>
+      <button onclick="confirmLabel()" class="flex-1 py-3 bg-primary text-white rounded-xl text-sm font-semibold">Criar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-label-picker" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-label-picker')">
+  <div class="modal-sheet">
+    <h2 class="font-bold text-lg mb-4">Adicionar Etiqueta</h2>
+    <div id="label-picker-list" class="flex flex-wrap gap-2 mb-4"></div>
+    <button onclick="closeModal('modal-label-picker')" class="w-full py-3 bg-primary text-white rounded-xl text-sm font-semibold">Pronto</button>
+  </div>
+</div>
+
+<div id="modal-delete" class="modal-overlay" onclick="if(event.target===this)closeModal('modal-delete')">
+  <div class="modal-sheet">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-500"><span class="material-symbols-outlined">delete</span></div>
+      <h2 class="font-bold text-lg">Excluir nota?</h2>
+    </div>
+    <p class="text-slate-500 text-sm mb-5">Será removida do Firestore permanentemente.</p>
+    <div class="flex gap-3">
+      <button onclick="closeModal('modal-delete')" class="flex-1 py-3 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-semibold text-slate-600">Cancelar</button>
+      <button onclick="confirmDelete()" class="flex-1 py-3 bg-red-500 text-white rounded-xl text-sm font-semibold">Excluir</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── LOCAL CACHE ────────────────────────────────────────────────────────────
+function loadL(k,fb){ try{ return JSON.parse(localStorage.getItem(k))||fb; }catch{ return fb; } }
+function saveL(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch{} }
+const getNotes   = () => loadL('nn_notes', []);
+const getFolders = () => loadL('nn_folders', [{id:'default',name:'Notas',icon:'note_stack'}]);
+const getLabels  = () => loadL('nn_labels',  ['trabalho','pessoal','ideias']);
+const getPrefs   = () => Object.assign({darkMode:false,confirmDelete:true,autoSave:true}, loadL('nn_prefs',{}));
+const savePrefs  = p  => saveL('nn_prefs', p);
+const uid        = () => Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+// ─── STATE ──────────────────────────────────────────────────────────────────
+let currentScreen='screen-folders', currentFolder=null, currentNote=null;
+let sortMode='date', deleteTargetId=null, editingFolderId=null, selectedFolderIcon='folder';
+const ICONS=['folder','work','lightbulb','person','favorite','star','home','book','travel_explore','fitness_center','restaurant','music_note','code','science'];
+
+// ─── DATA CALLBACKS (called by Firebase listener) ─────────────────────────
+window._appReady = false;
+window._onDataUpdate = (type) => {
+  if (currentScreen==='screen-folders') renderFolders();
+  if (currentScreen==='screen-notes' && (type==='notes')) renderNoteList();
+  if (currentScreen==='screen-settings') renderStorage();
+};
+
+// ─── NAVIGATION ─────────────────────────────────────────────────────────────
+function navigate(id, dir='forward'){
+  document.getElementById(currentScreen).classList.remove('active');
+  const nx=document.getElementById(id);
+  nx.classList.add('active');
+  nx.classList.add(dir==='back'?'slide-back':'slide-in');
+  setTimeout(()=>nx.classList.remove('slide-in','slide-back'),250);
+  currentScreen=id;
+  if(id==='screen-folders') renderFolders();
+  if(id==='screen-settings') renderSettings();
+}
+
+// ─── DARK MODE ───────────────────────────────────────────────────────────────
+function applyDark(on){
+  document.documentElement.classList.toggle('dark',on);
+  document.documentElement.classList.toggle('light',!on);
+  const i=document.getElementById('dark-icon'); if(i) i.textContent=on?'light_mode':'dark_mode';
+  const s=document.getElementById('dark-setting'); if(s) s.checked=on;
+}
+function toggleDarkMode(on){ const p=getPrefs(); p.darkMode=on; savePrefs(p); applyDark(on); }
+document.getElementById('dark-toggle').onclick=()=>toggleDarkMode(!getPrefs().darkMode);
+
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+let _tt;
+function showToast(msg){
+  const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(_tt); _tt=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+// ─── FOLDERS ────────────────────────────────────────────────────────────────
+function renderFolders(){
+  const notes=getNotes(), folders=getFolders(), labels=getLabels();
+  const q=(document.getElementById('folder-search').value||'').toLowerCase();
+  document.getElementById('all-count').textContent=notes.length;
+  document.getElementById('pinned-count').textContent=notes.filter(n=>n.pinned).length;
+
+  const filt=folders.filter(f=>!q||f.name.toLowerCase().includes(q));
+  const fl=document.getElementById('folder-list');
+  fl.innerHTML = filt.length
+    ? filt.map((f,i)=>`<div class="note-row flex items-center gap-3 px-4 py-3.5 ${i<filt.length-1?'border-b border-slate-100 dark:border-slate-800':''}" onclick="openFolder('${f.id}','${f.name}')">
+        <div class="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0"><span class="material-symbols-outlined fill-icon text-[20px]">${f.icon||'folder'}</span></div>
+        <span class="flex-1 font-medium text-[15px]">${f.name}</span>
+        <span class="text-xs text-slate-400 font-medium">${notes.filter(n=>n.folder===f.id).length}</span>
+        <button onclick="event.stopPropagation();openFolderModal('${f.id}')" class="p-1 text-slate-300 hover:text-primary ml-1"><span class="material-symbols-outlined text-[18px]">more_vert</span></button>
+        <span class="material-symbols-outlined text-slate-300 text-lg">chevron_right</span>
+      </div>`).join('')
+    : '<div class="px-4 py-6 text-center text-slate-400 text-sm">Nenhuma pasta</div>';
+
+  document.getElementById('label-list').innerHTML=labels.filter(l=>!q||l.includes(q)).map(l=>
+    `<span class="chip" onclick="openFolder('__label__:${l}','#${l}')">#${l}<span onclick="event.stopPropagation();deleteLabel('${l}')" class="ml-1.5 opacity-40 hover:opacity-100 hover:text-red-500">×</span></span>`
+  ).join('');
+}
+document.getElementById('folder-search').addEventListener('input',renderFolders);
+function openAllNotes(){ currentFolder=null; document.getElementById('notes-title').textContent='Todas as Notas'; navigate('screen-notes'); renderNoteList(); }
+function openFolder(id,name){ currentFolder=id; document.getElementById('notes-title').textContent=name; navigate('screen-notes'); renderNoteList(); }
+
+// Folder modal
+function openFolderModal(editId=null){
+  editingFolderId=editId; selectedFolderIcon='folder';
+  const inp=document.getElementById('folder-name-input');
+  document.getElementById('folder-modal-title').textContent=editId?'Editar Pasta':'Nova Pasta';
+  if(editId){ const f=getFolders().find(x=>x.id===editId); if(f){inp.value=f.name;selectedFolderIcon=f.icon||'folder';} }
+  else inp.value='';
+  document.getElementById('folder-icon-picker').innerHTML=ICONS.map(ic=>
+    `<button onclick="selIcon('${ic}')" id="fi-${ic}" class="p-2 rounded-lg border-2 ${selectedFolderIcon===ic?'border-primary bg-primary/10':'border-slate-200 dark:border-slate-700'} hover:border-primary transition-all">
+      <span class="material-symbols-outlined fill-icon text-[20px] text-primary">${ic}</span>
+    </button>`).join('');
+  openModal('modal-folder'); setTimeout(()=>inp.focus(),100);
+}
+function selIcon(ic){
+  document.querySelectorAll('#folder-icon-picker button').forEach(b=>b.className=b.className.replace('border-primary bg-primary/10','border-slate-200 dark:border-slate-700'));
+  const b=document.getElementById('fi-'+ic); if(b) b.className=b.className.replace('border-slate-200 dark:border-slate-700','border-primary bg-primary/10');
+  selectedFolderIcon=ic;
+}
+async function confirmFolder(){
+  const name=document.getElementById('folder-name-input').value.trim(); if(!name) return;
+  const folder={id:editingFolderId||uid(),name,icon:selectedFolderIcon};
+  closeModal('modal-folder');
+  await window.FB_saveFolder(folder);
+  showToast(editingFolderId?'Pasta atualizada ✓':'Pasta criada ✓');
+}
+
+// Labels
+function openLabelModal(){ document.getElementById('label-name-input').value=''; openModal('modal-label'); }
+async function confirmLabel(){
+  const name=document.getElementById('label-name-input').value.trim().replace(/^#/,''); if(!name) return;
+  closeModal('modal-label');
+  await window.FB_saveLabel(name);
+  showToast('Etiqueta criada ✓');
+}
+async function deleteLabel(name){
+  if(!confirm(`Excluir etiqueta #${name}?`)) return;
+  await window.FB_deleteLabel(name); showToast('Etiqueta removida');
+}
+
+// ─── NOTES LIST ──────────────────────────────────────────────────────────────
+let _sortOpen=false;
+function toggleSort(){ _sortOpen=!_sortOpen; document.getElementById('sort-menu').classList.toggle('hidden',!_sortOpen); }
+document.addEventListener('click',e=>{ if(!document.getElementById('sort-btn')?.contains(e.target)){ _sortOpen=false; document.getElementById('sort-menu')?.classList.add('hidden'); } });
+function setSortMode(m){ sortMode=m; renderNoteList(); toggleSort(); }
+
+function renderNoteList(){
+  const notes=getNotes();
+  const q=(document.getElementById('note-search')?.value||'').toLowerCase();
+  let fl=[...notes];
+  if(currentFolder==='__pinned__') fl=fl.filter(n=>n.pinned);
+  else if(currentFolder?.startsWith('__label__:')){ const l=currentFolder.split(':')[1]; fl=fl.filter(n=>n.labels?.includes(l)); }
+  else if(currentFolder) fl=fl.filter(n=>n.folder===currentFolder);
+  if(q) fl=fl.filter(n=>(n.title||'').toLowerCase().includes(q)||(n.body||'').toLowerCase().includes(q));
+  fl.sort((a,b)=>{
+    if(a.pinned&&!b.pinned) return -1; if(!a.pinned&&b.pinned) return 1;
+    if(sortMode==='title') return (a.title||'').localeCompare(b.title||'');
+    if(sortMode==='oldest') return (a.updatedAt||0)-(b.updatedAt||0);
+    return (b.updatedAt||0)-(a.updatedAt||0);
+  });
+  const list=document.getElementById('notes-list'); if(!list) return;
+  if(!fl.length){
+    list.innerHTML=`<div class="px-4 py-10 text-center"><span class="material-symbols-outlined text-slate-300 text-[48px]">note_add</span><p class="text-slate-400 text-sm mt-2">${q?'Nenhum resultado':'Nenhuma nota ainda'}</p></div>`;
+    document.getElementById('notes-count').textContent=''; return;
+  }
+  list.innerHTML=fl.map((n,i)=>`<div class="note-row note-item flex flex-col p-4 ${i<fl.length-1?'border-b border-slate-100 dark:border-slate-800':''}" onclick="openNote('${n.id}')">
+    <div class="flex justify-between items-start mb-0.5">
+      <h3 class="font-bold text-[15px] truncate flex-1 mr-2">${hl(n.title||'Sem título',q)}</h3>
+      <div class="flex items-center gap-1 shrink-0">
+        ${n.pinned?'<span class="material-symbols-outlined fill-icon text-yellow-400 text-[15px]">push_pin</span>':''}
+        <span class="text-xs text-slate-400 font-medium">${fmtD(n.updatedAt)}</span>
+      </div>
+    </div>
+    <p class="text-sm text-slate-400 truncate">${hl((n.body||'').replace(/\n/g,' ').slice(0,60)||'Sem conteúdo',q)}</p>
+    ${n.labels?.length?`<div class="flex gap-1 mt-1.5 flex-wrap">${n.labels.map(l=>`<span class="text-[10px] font-semibold text-primary/70 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20">#${l}</span>`).join('')}</div>`:''}
+  </div>`).join('');
+  const c=fl.length; document.getElementById('notes-count').textContent=`${c} ${c===1?'nota':'notas'}`;
+}
+
+function hl(t,q){ if(!q) return t; return t.replace(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi'),'<mark class="search-hl">$1</mark>'); }
+function fmtD(ts){
+  if(!ts) return '';
+  const diff=Date.now()-ts, d=new Date(ts);
+  if(diff<60000) return 'agora';
+  if(diff<3600000) return Math.floor(diff/60000)+'m';
+  if(diff<86400000) return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
+  if(diff<604800000) return d.toLocaleDateString('pt-BR',{weekday:'short'});
+  return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'short'});
+}
+
+// ─── EDITOR ──────────────────────────────────────────────────────────────────
+let _asInterval=null;
+function newNote(fId){ currentNote={id:uid(),title:'',body:'',folder:fId||null,labels:[],pinned:false,createdAt:Date.now(),updatedAt:Date.now(),isNew:true}; openEditor(); }
+function openNote(id){ const n=getNotes().find(x=>x.id===id); if(!n) return; currentNote={...n,isNew:false}; openEditor(); }
+function openEditor(){
+  document.getElementById('note-title').value=currentNote.title||'';
+  document.getElementById('note-body').value=currentNote.body||'';
+  document.getElementById('note-date').textContent=currentNote.updatedAt
+    ? new Date(currentNote.updatedAt).toLocaleString('pt-BR',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}):'';
+  updPinBtn(); renderEditorLabels(); updFolderBadge(); updCharCount();
+  navigate('screen-editor');
+  setTimeout(()=>{ (!currentNote.title?document.getElementById('note-title'):document.getElementById('note-body')).focus(); },250);
+  document.getElementById('note-body').oninput=updCharCount;
+  clearInterval(_asInterval);
+  if(getPrefs().autoSave) _asInterval=setInterval(()=>{ if(currentNote) _autoSave(); },30000);
+}
+async function _autoSave(){
+  currentNote.title=document.getElementById('note-title').value;
+  currentNote.body=document.getElementById('note-body').value;
+  setESync('saving');
+  await window.FB_saveNote({...currentNote});
+  setESync('saved');
+}
+async function saveAndBack(){
+  clearInterval(_asInterval);
+  const title=document.getElementById('note-title').value.trim();
+  const body=document.getElementById('note-body').value.trim();
+  if(!title&&!body){ navigate('screen-notes','back'); renderNoteList(); return; }
+  currentNote.title=title||'Sem título';
+  currentNote.body=document.getElementById('note-body').value;
+  currentNote.updatedAt=Date.now();
+  await window.FB_saveNote({...currentNote});
+  showToast('Nota salva no Firestore ✓');
+  navigate('screen-notes','back');
+}
+function setESync(s){
+  const el=document.getElementById('editor-sync-dot'); if(!el) return;
+  if(s==='saving'){ el.className='w-2 h-2 rounded-full bg-amber-400 animate-pulse'; el.title='Salvando…'; }
+  else{ el.className='w-2 h-2 rounded-full bg-emerald-500'; el.title='Salvo'; setTimeout(()=>{ el.className='w-2 h-2 rounded-full bg-slate-300'; },2000); }
+}
+function updCharCount(){ const el=document.getElementById('char-count'); if(el){ const l=(document.getElementById('note-body')?.value||'').length; el.textContent=`${l} char${l!==1?'s':''}`; } }
+function updPinBtn(){ document.getElementById('pin-icon').className=currentNote?.pinned?'material-symbols-outlined fill-icon text-[22px] text-yellow-400':'material-symbols-outlined text-[22px] text-slate-400'; }
+function togglePin(){ if(currentNote){ currentNote.pinned=!currentNote.pinned; updPinBtn(); } }
+function updFolderBadge(){ const f=getFolders().find(x=>x.id===currentNote?.folder); document.getElementById('folder-badge-name').textContent=f?f.name:'Sem pasta'; }
+function renderEditorLabels(){ document.getElementById('editor-labels').innerHTML=(currentNote?.labels||[]).map(l=>`<span class="chip active text-[11px] py-0.5 px-2.5" onclick="remLabel('${l}')">#${l} <span class="ml-0.5 opacity-60">×</span></span>`).join(''); }
+function remLabel(l){ if(currentNote){ currentNote.labels=currentNote.labels.filter(x=>x!==l); renderEditorLabels(); } }
+
+function openLabelPickerModal(){
+  const labels=getLabels();
+  document.getElementById('label-picker-list').innerHTML=labels.length
+    ? labels.map(l=>`<span class="chip ${currentNote?.labels?.includes(l)?'active':''}" onclick="togLabel('${l}',this)">#${l}</span>`).join('')
+    : '<p class="text-slate-400 text-sm">Crie etiquetas nas Pastas.</p>';
+  openModal('modal-label-picker');
+}
+function togLabel(l,el){
+  if(!currentNote) return;
+  if(!currentNote.labels) currentNote.labels=[];
+  if(currentNote.labels.includes(l)){ currentNote.labels=currentNote.labels.filter(x=>x!==l); el.classList.remove('active'); }
+  else{ currentNote.labels.push(l); el.classList.add('active'); }
+  renderEditorLabels();
+}
+function insertMd(b,a){ const ta=document.getElementById('note-body'),s=ta.selectionStart,e=ta.selectionEnd; ta.value=ta.value.slice(0,s)+b+ta.value.slice(s,e)+a+ta.value.slice(e); ta.selectionStart=s+b.length; ta.selectionEnd=e+b.length; ta.focus(); updCharCount(); }
+function insertChecklist(){ const ta=document.getElementById('note-body'),pos=ta.selectionStart,ins='\n☐ '; ta.value=ta.value.slice(0,pos)+ins+ta.value.slice(pos); ta.selectionStart=ta.selectionEnd=pos+ins.length; ta.focus(); updCharCount(); }
+function insertHeading(){ const ta=document.getElementById('note-body'),pos=ta.selectionStart,ins='\n## '; ta.value=ta.value.slice(0,pos)+ins+ta.value.slice(pos); ta.selectionStart=ta.selectionEnd=pos+ins.length; ta.focus(); }
+
+// ─── DELETE ──────────────────────────────────────────────────────────────────
+function deleteCurrentNote(){ if(!currentNote) return; deleteTargetId=currentNote.id; if(!getPrefs().confirmDelete){confirmDelete();return;} openModal('modal-delete'); }
+async function confirmDelete(){
+  if(!deleteTargetId) return;
+  closeModal('modal-delete');
+  await window.FB_deleteNote(deleteTargetId);
+  deleteTargetId=null; showToast('Nota excluída');
+  navigate('screen-notes','back');
+}
+
+// ─── SETTINGS ────────────────────────────────────────────────────────────────
+function renderSettings(){
+  const p=getPrefs();
+  document.getElementById('dark-setting').checked=p.darkMode;
+  document.getElementById('confirm-delete').checked=p.confirmDelete!==false;
+  document.getElementById('auto-save').checked=p.autoSave!==false;
+  renderStorage();
+}
+function renderStorage(){
+  const notes=getNotes(), bytes=new Blob([JSON.stringify(notes)]).size, kb=(bytes/1024).toFixed(1);
+  document.getElementById('storage-used').textContent=bytes<1024?bytes+' B':kb+' KB';
+  document.getElementById('notes-total-count').textContent=`${notes.length} notas`;
+  document.getElementById('storage-fill').style.width=Math.min((bytes/(200*1024))*100,100)+'%';
+}
+function savePref(k,v){ const p=getPrefs(); p[k]=v; savePrefs(p); }
+function exportData(){
+  const data={notes:getNotes(),folders:getFolders(),labels:getLabels(),project:'felpscnotes',exported:new Date().toISOString()};
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}));
+  a.download=`felpscnotes-${new Date().toISOString().slice(0,10)}.json`; a.click();
+  showToast('Backup exportado ✓');
+}
+function clearLocalCache(){
+  if(!confirm('Limpar cache local? Os dados no Firestore não serão apagados.')) return;
+  ['nn_notes','nn_folders','nn_labels'].forEach(k=>localStorage.removeItem(k));
+  showToast('Cache limpo — aguarde sync…'); renderFolders();
+}
+
+// ─── MODALS ──────────────────────────────────────────────────────────────────
+function openModal(id){ document.getElementById(id).classList.add('open'); }
+function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+// ─── INIT ────────────────────────────────────────────────────────────────────
+(function(){
+  applyDark(getPrefs().darkMode);
+  renderFolders();
+  setTimeout(()=>{ window._appReady=true; },500);
+
+  // Register Service Worker (PWA)
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then(() => console.log('SW registrado'))
+        .catch(e => console.warn('SW erro:', e));
+    });
+  }
+
+  // Install prompt
+  let deferredPrompt;
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault(); deferredPrompt = e;
+    const btn = document.getElementById('install-btn');
+    if (btn) btn.style.display = 'flex';
+  });
+  window.addEventListener('appinstalled', () => {
+    const btn = document.getElementById('install-btn');
+    if (btn) btn.style.display = 'none';
+    showToast('App instalado! 🎉');
+  });
+  window.installApp = () => { if(deferredPrompt){ deferredPrompt.prompt(); deferredPrompt=null; } };
+})();
+</script>
+</body>
+</html>
